@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
 import 'leaflet/dist/leaflet.css';
-import { MapContainer, TileLayer, Marker, Popup, LayersControl } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, LayersControl, GeoJSON } from 'react-leaflet';
 
 const PLANT_NAME = 'Monstera deliciosa';
 
@@ -296,11 +296,14 @@ function PlantSuggestions({ plantNames }: { plantNames: string[] }) {
 function AddressMap({ address }: { address: string }) {
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [parcelData, setParcelData] = useState<any>(null);
+  const [propertyStats, setPropertyStats] = useState<{ soilType: string; address: string } | null>(null);
 
   useEffect(() => {
     if (!address.trim()) {
       setCoords(null);
       setError(null);
+      setPropertyStats(null);
       return;
     }
     async function fetchCoords() {
@@ -314,48 +317,76 @@ function AddressMap({ address }: { address: string }) {
         if (data && data[0]) {
           setCoords({ lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) });
           setError(null);
+          // Dummy soil type assignment based on city in address
+          let soilType = 'Unknown';
+          if (/los angeles/i.test(address)) soilType = 'Sandy Loam';
+          else if (/san francisco/i.test(address)) soilType = 'Loam';
+          else if (/new york/i.test(address)) soilType = 'Silt Loam';
+          else if (/london/i.test(address)) soilType = 'Clay';
+          else if (/sydney/i.test(address)) soilType = 'Sandy';
+          else if (/tokyo/i.test(address)) soilType = 'Andosol';
+          else if (/cape town/i.test(address)) soilType = 'Sandy';
+          else if (/mexico city/i.test(address)) soilType = 'Volcanic';
+          else if (/berlin/i.test(address)) soilType = 'Sandy Loam';
+          else if (/mumbai/i.test(address)) soilType = 'Laterite';
+          setPropertyStats({ soilType, address: data[0].display_name });
         } else {
           setCoords(null);
           setError('Address not found');
+          setPropertyStats(null);
         }
       } catch (err) {
         setCoords(null);
         setError('Failed to fetch location');
+        setPropertyStats(null);
       }
     }
     fetchCoords();
   }, [address]);
 
+  useEffect(() => {
+    fetch('/parcels.geojson')
+      .then(res => res.json())
+      .then(data => setParcelData(data))
+      .catch(() => setParcelData(null));
+  }, []);
+
   if (error) return <div style={{ color: 'red', marginTop: '1rem' }}>{error}</div>;
   if (!coords) return null;
 
   return (
-    <div style={{ marginTop: '1rem', width: '100%', height: 300 }}>
-      <MapContainer
-        center={[coords.lat, coords.lon]}
-        zoom={18}
-        style={{ width: '100%', height: 300, borderRadius: 8, border: '1px solid #ccc' }}
-      >
-        <LayersControl position="topright">
-          <LayersControl.BaseLayer checked name="OpenStreetMap">
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-          </LayersControl.BaseLayer>
-          <LayersControl.Overlay name="Parcel Boundaries (experimental)">
-            {/* This tile layer shows parcel/lot lines in some regions (France, some US cities, etc.) */}
-            <TileLayer
-              attribution='Parcel boundaries from OpenStreetMap (experimental)'
-              url="https://tiles.openstreetmap.fr/cadastre/{z}/{x}/{y}.png"
-              opacity={0.7}
-            />
-          </LayersControl.Overlay>
-        </LayersControl>
-        <Marker position={[coords.lat, coords.lon]}>
-          <Popup>{address}</Popup>
-        </Marker>
-      </MapContainer>
+    <div style={{ marginTop: '1rem', display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
+      <div style={{ width: 400, height: 300 }}>
+        <MapContainer
+          center={[coords.lat, coords.lon]}
+          zoom={18}
+          maxZoom={19}
+          style={{ width: '100%', height: 300, borderRadius: 8, border: '1px solid #ccc' }}
+        >
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            maxZoom={19}
+          />
+          {parcelData && (
+            <GeoJSON data={parcelData} style={{ color: 'red', weight: 1, fillOpacity: 0 }} />
+          )}
+          <Marker position={[coords.lat, coords.lon]}>
+            <Popup>{address}</Popup>
+          </Marker>
+        </MapContainer>
+      </div>
+      <div style={{ minWidth: 220 }}>
+        <h4>Property Stats</h4>
+        {propertyStats ? (
+          <ul style={{ listStyle: 'none', padding: 0 }}>
+            <li><strong>Address:</strong> {propertyStats.address}</li>
+            <li><strong>Soil Type:</strong> {propertyStats.soilType}</li>
+          </ul>
+        ) : (
+          <p>No property stats available.</p>
+        )}
+      </div>
     </div>
   );
 }
